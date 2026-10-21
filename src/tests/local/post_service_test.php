@@ -7,7 +7,7 @@ defined('MOODLE_INTERNAL') || die();
 use advanced_testcase;
 
 /**
- * Pruebas unitarias para el metodo can_post_announcement.
+ * Pruebas unitarias de post_service.
  *
  * @package    local_chuspasocial
  * @category   test
@@ -66,70 +66,75 @@ class post_service_test extends advanced_testcase {
         $this->assertTrue($result);
     }
 
-        /**
-     * Test: se puede crear una publicacion en el muro general.
+    /**
+     * Test: un post normal se guarda en el muro general (courseid 0).
+     *
+     * @covers \local_chuspasocial\local\post_service::create_post
      */
     public function test_create_post_muro_general(): void {
-        global $DB, $SITE;
+        global $DB;
 
         $user = $this->getDataGenerator()->create_user();
         $this->setUser($user);
 
-        // TODO: ajusta los argumentos a la firma real.
-        $result = post_service::create_post($SITE->id, 'Hola muro general');
+        $id = post_service::create_post('Hola muro general', FORMAT_HTML);
 
-        $this->assertNotEmpty($result);
-        // TODO: verifica el registro, p. ej. $DB->record_exists('local_chuspasocial_post', [...]).
+        $this->assertGreaterThan(0, $id);
+        $record = $DB->get_record('local_chuspasocial_post', ['id' => $id], '*', MUST_EXIST);
+        $this->assertEquals($user->id, $record->userid);
+        $this->assertEquals('Hola muro general', $record->content);
+        $this->assertEquals(FORMAT_HTML, (int) $record->format);
+        $this->assertEquals('post', $record->type);
+        $this->assertEquals(0, (int) $record->courseid);
     }
 
     /**
-     * Test: un usuario inscrito puede publicar en su materia.
+     * Test: un usuario con la capacidad puede publicar un anuncio.
+     *
+     * @covers \local_chuspasocial\local\post_service::create_post
      */
-    public function test_create_post_materia_inscrita(): void {
-        $generator = $this->getDataGenerator();
-        $course = $generator->create_course();
-        $user = $generator->create_user();
-        $generator->enrol_user($user->id, $course->id, 'student');
-        $this->setUser($user);
-
-        $result = post_service::create_post($course->id, 'Hola materia');
-
-        $this->assertNotEmpty($result);
-    }
-
-    /**
-     * Test: un usuario no inscrito no puede publicar en la materia.
-     */
-    public function test_create_post_materia_no_inscrita(): void {
-        $generator = $this->getDataGenerator();
-        $course = $generator->create_course();
-        $user = $generator->create_user(); // Sin inscribir.
-        $this->setUser($user);
-
-        // TODO: ajusta al comportamiento real (excepcion o false).
-        $this->expectException(\moodle_exception::class);
-        post_service::create_post($course->id, 'No deberia poder');
-    }
-
-    /**
-     * Test: sin la capacidad requerida no se puede publicar.
-     */
-    public function test_create_post_sin_capacidad(): void {
+    public function test_create_post_anuncio_con_capacidad(): void {
         global $DB;
 
-        $generator = $this->getDataGenerator();
-        $course = $generator->create_course();
-        $user = $generator->create_user();
-        $generator->enrol_user($user->id, $course->id, 'student');
+        $this->setAdminUser();
+
+        $id = post_service::create_post('Anuncio oficial', FORMAT_HTML, 'announcement');
+
+        $record = $DB->get_record('local_chuspasocial_post', ['id' => $id], '*', MUST_EXIST);
+        $this->assertEquals('announcement', $record->type);
+    }
+
+    /**
+     * Test: sin la capacidad no se puede publicar un anuncio.
+     *
+     * @covers \local_chuspasocial\local\post_service::create_post
+     */
+    public function test_create_post_anuncio_sin_capacidad(): void {
+        $user = $this->getDataGenerator()->create_user();
         $this->setUser($user);
 
-        $studentrole = $DB->get_field('role', 'id', ['shortname' => 'student']);
-        // TODO: pon el nombre real de la capacidad que exige create_post().
-        assign_capability('local/chuspasocial:post', CAP_PROHIBIT, $studentrole,
-            \context_course::instance($course->id), true);
-
         $this->expectException(\required_capability_exception::class);
-        post_service::create_post($course->id, 'Sin permiso');
+        post_service::create_post('Anuncio no permitido', FORMAT_HTML, 'announcement');
+    }
+
+    /**
+     * Test: si falla la capacidad, no se guarda ningun registro.
+     *
+     * @covers \local_chuspasocial\local\post_service::create_post
+     */
+    public function test_create_post_anuncio_sin_capacidad_no_guarda(): void {
+        global $DB;
+
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+        $antes = $DB->count_records('local_chuspasocial_post');
+
+        try {
+            post_service::create_post('Anuncio no permitido', FORMAT_HTML, 'announcement');
+            $this->fail('Se esperaba required_capability_exception');
+        } catch (\required_capability_exception $e) {
+            $this->assertSame($antes, $DB->count_records('local_chuspasocial_post'));
+        }
     }
 }
 
