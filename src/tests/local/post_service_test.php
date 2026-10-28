@@ -19,13 +19,14 @@ namespace local_chuspasocial\local;
 use advanced_testcase;
 
 /**
- * Pruebas unitarias para el metodo can_post_announcement.
+ *  Pruebas unitarias de post_service.
  *
  * @package    local_chuspasocial
  * @category   test
  * @copyright  2026 SIS-INF
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @covers     \local_chuspasocial\local\post_service::can_post_announcement
+ * @covers     \local_chuspasocial\local\post_service::create_post
  */
 class post_service_test extends advanced_testcase {
     /**
@@ -340,5 +341,112 @@ class post_service_test extends advanced_testcase {
 
         $post = $DB->get_record('local_chuspasocial_post', ['id' => $postid]);
         $this->assertGreaterThan($oldtime, $post->timemodified);
+    }
+
+        /**
+     * Da la capacidad de publicar a los usuarios autenticados en todo el sitio.
+     */
+    private function allow_posting(): void {
+        global $DB;
+
+        $roleid = $DB->get_field('role', 'id', ['shortname' => 'user'], MUST_EXIST);
+        assign_capability(
+            'local/chuspasocial:post',
+            CAP_ALLOW,
+            $roleid,
+            \context_system::instance()->id,
+            true
+        );
+    }
+
+    /**
+     * Test: se puede publicar en el muro general (courseid 0).
+     *
+     * @covers \local_chuspasocial\local\post_service::create_post
+     */
+    public function test_create_post_muro_general(): void {
+        $this->allow_posting();
+        $user = $this->getDataGenerator()->create_user();
+        $this->setUser($user);
+
+        $post = post_service::create_post(0, 'Hola muro general', FORMAT_HTML);
+
+        $this->assertInstanceOf(\local_chuspasocial\local\persistent\post::class, $post);
+        $this->assertGreaterThan(0, (int) $post->get('id'));
+        $this->assertEquals($user->id, (int) $post->get('userid'));
+        $this->assertEquals(0, (int) $post->get('courseid'));
+        $this->assertEquals('Hola muro general', $post->get('content'));
+        $this->assertEquals(FORMAT_HTML, (int) $post->get('contentformat'));
+        $this->assertEquals(\local_chuspasocial\local\persistent\post::TYPE_POST, $post->get('type'));
+    }
+
+    /**
+     * Test: un usuario inscrito puede publicar en su materia.
+     *
+     * @covers \local_chuspasocial\local\post_service::create_post
+     */
+    public function test_create_post_materia_inscrita(): void {
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $user = $generator->create_user();
+        $generator->enrol_user($user->id, $course->id, 'student');
+        $this->allow_posting();
+        $this->setUser($user);
+
+        $post = post_service::create_post((int) $course->id, 'Hola materia', FORMAT_HTML);
+
+        $this->assertGreaterThan(0, (int) $post->get('id'));
+        $this->assertEquals($course->id, (int) $post->get('courseid'));
+        $this->assertEquals($user->id, (int) $post->get('userid'));
+    }
+
+    /**
+     * Test: un usuario no inscrito no puede publicar en la materia y no se guarda nada.
+     *
+     * @covers \local_chuspasocial\local\post_service::create_post
+     */
+    public function test_create_post_materia_no_inscrita(): void {
+        global $DB;
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $user = $generator->create_user(); // Sin inscribir.
+        $this->allow_posting();
+        $this->setUser($user);
+        $antes = $DB->count_records('local_chuspasocial_post');
+
+        try {
+            post_service::create_post((int) $course->id, 'No deberia poder', FORMAT_HTML);
+            $this->fail('Se esperaba moodle_exception por no estar inscrito');
+        } catch (\moodle_exception $e) {
+            $this->assertEquals('notenrolled', $e->errorcode);
+        }
+        $this->assertSame($antes, $DB->count_records('local_chuspasocial_post'));
+    }
+
+    /**
+     * Test: sin la capacidad requerida no se puede publicar.
+     *
+     * @covers \local_chuspasocial\local\post_service::create_post
+     */
+    public function test_create_post_sin_capacidad(): void {
+        global $DB;
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $user = $generator->create_user();
+        $generator->enrol_user($user->id, $course->id, 'student');
+        $studentroleid = $DB->get_field('role', 'id', ['shortname' => 'student'], MUST_EXIST);
+        assign_capability(
+            'local/chuspasocial:post',
+            CAP_PROHIBIT,
+            $studentroleid,
+            \context_course::instance($course->id)->id,
+            true
+        );
+        $this->setUser($user);
+
+        $this->expectException(\required_capability_exception::class);
+        post_service::create_post((int) $course->id, 'Sin permiso', FORMAT_HTML);
     }
 }
