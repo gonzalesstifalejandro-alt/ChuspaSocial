@@ -14,7 +14,42 @@
 // along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
 import Ajax from 'core/ajax';
-import Notification from 'core/notification';
+import {getString} from 'core/str';
+
+const ERROR_VISIBLE_MS = 5000;
+
+const errorTimers = new WeakMap();
+
+/**
+ * Shows a temporary error alert inside the comments section.
+ *
+ * @param {HTMLElement} section Element with the data-postid attribute.
+ * @param {String} message Message to display.
+ */
+const showError = (section, message) => {
+    let alert = section.querySelector('[data-region="comment-error"]');
+
+    if (!alert) {
+        alert = document.createElement('div');
+        alert.className = 'alert alert-danger mt-2';
+        alert.dataset.region = 'comment-error';
+        alert.setAttribute('role', 'alert');
+        section.append(alert);
+    }
+
+    alert.textContent = message;
+
+    const timer = errorTimers.get(alert);
+
+    if (timer) {
+        window.clearTimeout(timer);
+    }
+
+    errorTimers.set(alert, window.setTimeout(() => {
+        alert.remove();
+        errorTimers.delete(alert);
+    }, ERROR_VISIBLE_MS));
+};
 
 /**
  * Adds a rendered comment to the comments list of a post.
@@ -100,7 +135,15 @@ export const init = () => {
         }).catch((error) => {
             input.disabled = false;
 
-            Notification.exception(error);
+            return getString('errorsavingrequest', 'error').then((message) => {
+                showError(section, message);
+
+                return null;
+            }).catch(() => {
+                showError(section, (error && error.message) || '');
+
+                return null;
+            });
         });
     });
 };

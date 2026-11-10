@@ -127,4 +127,41 @@ class comment_service_test extends advanced_testcase {
         $comment = $DB->get_record('local_chuspasocial_comment', ['id' => $commentid], '*', MUST_EXIST);
         $this->assertSame('', $comment->content);
     }
+
+    /**
+     * Test: get_comments devuelve los comentarios del mas antiguo al mas reciente.
+     *
+     * @covers \local_chuspasocial\local\comment_service::get_comments
+     */
+    public function test_get_comments_orden_mas_antiguo_primero(): void {
+        global $DB;
+
+        $generator = $this->getDataGenerator()->get_plugin_generator('local_chuspasocial');
+        $post = $generator->create_post();
+        $postid = $post->get('id');
+
+        $reciente = $generator->create_comment(['postid' => $postid, 'content' => 'Reciente']);
+        $antiguo = $generator->create_comment(['postid' => $postid, 'content' => 'Antiguo']);
+        $DB->set_field('local_chuspasocial_comment', 'timecreated', 2000, ['id' => $reciente->get('id')]);
+        $DB->set_field('local_chuspasocial_comment', 'timecreated', 1000, ['id' => $antiguo->get('id')]);
+
+        $comments = comment_service::get_comments($postid);
+
+        $this->assertCount(2, $comments);
+        $this->assertEquals($antiguo->get('id'), $comments[0]->id);
+        $this->assertEquals($reciente->get('id'), $comments[1]->id);
+    }
+
+    /**
+     * Test: get_comments de un post no visible no lanza excepcion y devuelve un array vacio.
+     *
+     * @covers \local_chuspasocial\local\comment_service::get_comments
+     */
+    public function test_get_comments_post_no_visible_devuelve_vacio(): void {
+        $generator = $this->getDataGenerator()->get_plugin_generator('local_chuspasocial');
+        $post = $generator->create_post(['hidden' => 1]);
+        $generator->create_comment(['postid' => $post->get('id')]);
+
+        $this->assertSame([], comment_service::get_comments($post->get('id')));
+    }
 }

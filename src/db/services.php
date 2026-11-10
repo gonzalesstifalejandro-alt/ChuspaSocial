@@ -60,4 +60,11 @@ $functions = [
         'type' => 'write',
         'ajax' => true,
     ],
+    'local_chuspasocial_get_posts' => [
+        'classname' => \local_chuspasocial\external\get_posts::class,
+        'methodname' => 'execute',
+        'description' => 'Return the list of posts for a wall.',
+        'type' => 'read',
+        'ajax' => true,
+    ],
 ];

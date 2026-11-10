@@ -10,8 +10,8 @@
 -- por lo que el resultado es un acumulado histórico por usuario.
 --
 -- TABLAS
--- tabla_publicaciones corresponde a local_chuspasocial_post y
--- tabla_comentarios corresponde a local_chuspasocial_comment (con el
+-- local_chuspasocial_post contiene las publicaciones y
+-- local_chuspasocial_comment contiene los comentarios (con el
 -- prefijo de tablas de Moodle).
 --
 -- ÍNDICES TEMPORALES
@@ -33,12 +33,12 @@ SELECT
     (SUM(es_publicacion) + SUM(es_comentario)) AS interacciones_totales
 FROM (
     SELECT userid, 1 AS es_publicacion, 0 AS es_comentario 
-    FROM tabla_publicaciones
+    FROM {local_chuspasocial_post}
     
     UNION ALL
     
     SELECT userid, 0 AS es_publicacion, 1 AS es_comentario 
-    FROM tabla_comentarios
+    FROM {local_chuspasocial_comment}
 ) AS actividad
 GROUP BY 
     userid

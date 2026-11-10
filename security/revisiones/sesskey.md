@@ -24,7 +24,7 @@ Las búsquedas se hicieron sobre todo `src/`:
 ## Acciones que modifican datos
 
 | Archivo | Línea | Acción | Estado |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | src/classes/form/post_form.php | 34 | Formulario de alta y edición de publicaciones. | OK: extiende `moodleform`, que agrega el campo oculto `sesskey` y llama a `confirm_sesskey()` al enviarse (formslib.php de Moodle, líneas 219 y 317). |
 | src/classes/form/listing_form.php | 16 | Formulario de alta de un anuncio del marketplace. | OK: extiende `moodleform` (misma verificación de sesskey). |
 | src/db/services.php | 32 | Servicio web `local_chuspasocial_toggle_follow`, `type => write`, `ajax => true`. | OK: Moodle llama a `require_sesskey()` antes de ejecutar los servicios web AJAX que requieren login (external_api.php de Moodle, líneas 216-223). |
@@ -40,7 +40,7 @@ y por eso Moodle exige la sesskey antes de ejecutarlo.
 ## Escrituras internas sin punto de entrada HTTP
 
 | Archivo | Línea | Acción | Estado |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | src/classes/local/post_service.php | 49 | `update_post()`: `$post->update()`. | No aplica dentro del servicio: no lee la petición; la verificación de sesskey corresponde al código que lo invoque (una página o un servicio web). |
 | src/classes/local/post_service.php | 103, 109, 123 | `delete_post()`: tres `delete_records` (comentarios, reacciones y publicación). | No aplica dentro del servicio: misma razón. |
 
@@ -72,6 +72,72 @@ declarados, así que no hay entrada HTTP que los dispare.
 
 `src/index.php` es la única página del plugin y solo imprime el encabezado y el
 pie de Moodle: no lee datos ni escribe, por lo que no necesita sesskey.
+
+## Ejemplos de validación de sesskey
+
+Los siguientes ejemplos son patrones de referencia para nuevas páginas o puntos
+de entrada que modifiquen datos. En este plugin no se necesitan todavía porque
+los formularios y servicios web existentes delegan la comprobación en Moodle,
+pero deben aplicarse en cuanto se agregue una acción manual.
+
+### `require_sesskey()` en una acción que modifica datos
+
+`require_sesskey()` lee el parámetro `sesskey` de la petición y lanza una
+excepción si no coincide con la sesión actual. Debe ejecutarse antes de leer o
+modificar datos:
+
+    require_sesskey();
+
+    $postid = required_param('postid', PARAM_INT);
+    \local_chuspasocial\local\post_service::delete_post($postid);
+
+Este patrón es indispensable en acciones como eliminar o editar una
+publicación, crear o resolver un reporte, alternar un seguimiento o una
+reacción, o agregar un comentario.
+
+### Formularios
+
+Los formularios que extienden `moodleform` ya incluyen el campo `sesskey` y la
+validación al procesar el envío, así que no deben duplicar la llamada. En un
+formulario HTML manual hay que agregar el campo oculto y validarlo al recibir el
+POST:
+
+    <form method="post" action="eliminar.php">
+        <input type="hidden" name="sesskey" value="<?php echo sesskey(); ?>">
+        <input type="hidden" name="postid" value="<?php echo $postid; ?>">
+        <button type="submit">Eliminar</button>
+    </form>
+
+    require_sesskey();
+
+    $postid = required_param('postid', PARAM_INT);
+    \local_chuspasocial\local\post_service::delete_post($postid);
+
+### `confirm_sesskey()` cuando se necesita evaluar el resultado
+
+`confirm_sesskey()` devuelve `true` o `false`, por lo que permite manejar el
+error de forma explícita. Si se usa, siempre hay que comprobar el valor devuelto
+y detener la acción cuando sea `false`:
+
+    if (!confirm_sesskey()) {
+        throw new \moodle_exception('invalidsesskey');
+    }
+
+    $reportid = required_param('reportid', PARAM_INT);
+    \local_chuspasocial\local\report_service::resolve_and_hide($reportid);
+
+### Escenarios donde la validación es indispensable
+
+- Cualquier petición HTTP que cree, edite, elimine o cambie el estado de un
+  dato.
+- Acciones disparadas desde enlaces, formularios o AJAX que requieran sesión
+  iniciada.
+- Operaciones que solo comprueban capacidades con `require_capability()`: la
+  capacidad autoriza la acción, pero no protege contra CSRF.
+- Formularios que no extiendan `moodleform`: en ese caso hay que llamar a
+  `require_sesskey()` o a `confirm_sesskey()` manualmente.
+- Servicios web de escritura: si no son servicios AJAX gestionados por Moodle,
+  el punto de entrada debe validar la sesskey.
 
 ## Conclusión
 

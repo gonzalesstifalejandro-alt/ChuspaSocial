@@ -7,6 +7,7 @@
 | ID | Descripción | Prioridad | Estado |
 |---|---|---|---|
 | RF-001 | Ver el muro general al ingresar y mostrar primero las publicaciones más recientes | Alta | Pendiente |
+| RF-002 | Publicar texto en el muro general, visible para todo el campus | Alta | Pendiente |
 | RF-003 | Publicar en el muro de una materia | Alta | Pendiente |
 | RF-004 | Adjuntar imágenes a una publicación | Media | Pendiente |
 | RF-006 | Eliminar una publicación propia | Alta | Pendiente |
@@ -112,6 +113,23 @@
 - **Dado** que existen varias publicaciones en el muro,
 - **Cuando** el usuario visualiza el muro general,
 - **Entonces** las publicaciones se muestran desde la más reciente hasta la más antigua.
+
+##### RF-002 - Publicar texto en el muro general
+
+**Criterio 1**
+- **Dado** un usuario autenticado con permiso para publicar,
+- **Cuando** escribe un texto y confirma la publicación en el muro general,
+- **Entonces** el sistema registra la publicación y la muestra en el muro general.
+
+**Criterio 2**
+- **Dado** que existe una publicación de texto en el muro general,
+- **Cuando** un usuario del campus accede al muro general,
+- **Entonces** puede visualizar la publicación.
+
+**Criterio 3**
+- **Dado** un usuario autenticado sin permiso para publicar,
+- **Cuando** intenta crear una publicación en el muro general,
+- **Entonces** el sistema impide la publicación.
 
 ##### RF-003 - Publicar en el muro de una materia
 

@@ -18,5 +18,8 @@
 # Clases del plugin
 /src/classes/    @sis-inf/docentes
 
-# Pruebas automatizadas
+# Pruebas automatizadas del plugin
+/src/tests/      @sis-inf/docentes
+
+# Pruebas manuales y documentación de pruebas
 /tests/          @sis-inf/docentes

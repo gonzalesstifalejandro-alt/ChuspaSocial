@@ -25,6 +25,7 @@
 require_once(__DIR__ . '/../../config.php');
 
 use local_chuspasocial\external\post_exporter;
+use local_chuspasocial\form\post_form;
 use local_chuspasocial\local\persistent\post;
 use local_chuspasocial\local\post_service;
 
@@ -40,6 +41,30 @@ $PAGE->set_context($context);
 $PAGE->set_url(new moodle_url('/local/chuspasocial/index.php'));
 $PAGE->set_title(get_string('pluginname', 'local_chuspasocial'));
 $PAGE->set_heading(get_string('pluginname', 'local_chuspasocial'));
+$PAGE->requires->js_call_amd('local_chuspasocial/report', 'init');
+
+// Display the form only to users allowed to publish.
+$canpost = has_capability('local/chuspasocial:post', $context);
+$postform = null;
+
+if ($canpost) {
+    $postform = new post_form(null, [
+        'courseid' => 0,
+        'can_post_announcement' => false,
+    ]);
+
+    if ($data = $postform->get_data()) {
+        // Get the content and its format from the Moodle editor.
+        $content = $data->content['text'];
+        $format = $data->content['format'];
+
+        // Create a publication in the general wall.
+        post_service::create_post(0, $content, $format);
+
+        // Prevent duplicate submissions when refreshing the page.
+        redirect(new moodle_url('/local/chuspasocial/index.php'));
+    }
+}
 
 // Get the posts of the general feed and turn each one into a plain record.
 $records = [];
@@ -81,5 +106,10 @@ foreach ($records as $record) {
 }
 
 echo $OUTPUT->header();
+
+if ($postform) {
+    $postform->display();
+}
+
 echo $OUTPUT->render_from_template('local_chuspasocial/wall', ['posts' => $posts]);
 echo $OUTPUT->footer();

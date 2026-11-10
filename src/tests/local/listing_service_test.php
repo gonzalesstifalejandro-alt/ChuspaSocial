@@ -412,5 +412,131 @@ class listing_service_test extends advanced_testcase {
         );
     }
 
-}
+    /**
+     * Un precio con decimales se formatea con la moneda y dos decimales.
+     *
+     * @covers \local_chuspasocial\local\listing_service::format_price
+     */
+    public function test_format_price_con_decimales(): void {
+        set_config('currency', 'BOB', 'local_chuspasocial');
 
+        $this->assertSame('BOB ' . format_float(10.5, 2), listing_service::format_price(10.5));
+        $this->assertSame('BOB ' . format_float(99.999, 2), listing_service::format_price(99.999));
+    }
+
+    /**
+     * Un precio de cero devuelve la etiqueta localizada de gratis.
+     *
+     * @covers \local_chuspasocial\local\listing_service::format_price
+     */
+    public function test_format_price_con_cero(): void {
+        $gratis = get_string('free', 'local_chuspasocial');
+
+        $this->assertSame($gratis, listing_service::format_price(0.0));
+        $this->assertSame($gratis, listing_service::format_price(0));
+    }
+
+    /**
+     * El autor del anuncio puede gestionarlo.
+     *
+     * @covers \local_chuspasocial\local\listing_service::can_manage
+     */
+    public function test_can_manage_autor(): void {
+        $listing = new \local_chuspasocial\local\persistent\listing($this->crear_anuncio('Calculo', 'Stewart'));
+
+        $this->assertTrue(listing_service::can_manage($listing, (int) $listing->get('userid')));
+    }
+
+    /**
+     * Un moderador puede gestionar un anuncio ajeno.
+     *
+     * @covers \local_chuspasocial\local\listing_service::can_manage
+     */
+    public function test_can_manage_moderador(): void {
+        $generator = $this->getDataGenerator();
+        $moderator = $generator->create_user();
+        $context = \context_system::instance();
+        $roleid = $generator->create_role();
+        assign_capability('local/chuspasocial:moderate', CAP_ALLOW, $roleid, $context->id);
+        role_assign($roleid, $moderator->id, $context->id);
+
+        $listing = new \local_chuspasocial\local\persistent\listing($this->crear_anuncio('Calculo', 'Stewart'));
+
+        $this->assertTrue(listing_service::can_manage($listing, (int) $moderator->id));
+    }
+
+    /**
+     * Otro usuario sin permisos no puede gestionar el anuncio.
+     *
+     * @covers \local_chuspasocial\local\listing_service::can_manage
+     */
+    public function test_can_manage_otro_usuario(): void {
+        $other = $this->getDataGenerator()->create_user();
+        $listing = new \local_chuspasocial\local\persistent\listing($this->crear_anuncio('Calculo', 'Stewart'));
+
+        $this->assertFalse(listing_service::can_manage($listing, (int) $other->id));
+    }
+    
+    /**
+     * Comprueba que el propietario puede marcar su anuncio como vendido.
+     *
+     * @covers \local_chuspasocial\local\listing_service::mark_sold
+     */
+    public function test_mark_sold_as_author(): void {
+        global $DB;
+
+        $listingid = $this->crear_anuncio('Libro de prueba', 'Autor');
+
+        $authorid = $DB->get_field(
+            'local_chuspasocial_listing',
+            'userid',
+            ['id' => $listingid],
+            MUST_EXIST
+        );
+
+        $this->setUser((int) $authorid);
+
+        listing_service::mark_sold($listingid);
+
+        $this->assertSame(
+            'sold',
+            $DB->get_field(
+                'local_chuspasocial_listing',
+                'status',
+                ['id' => $listingid],
+                MUST_EXIST
+            )
+        );
+    }
+
+    /**
+     * Comprueba que otro usuario no puede marcar un anuncio como vendido.
+     *
+     * @covers \local_chuspasocial\local\listing_service::mark_sold
+     */
+    public function test_mark_sold_as_other_user(): void {
+        global $DB;
+
+        $listingid = $this->crear_anuncio('Libro de prueba', 'Autor');
+        $otheruser = $this->getDataGenerator()->create_user();
+
+        $this->setUser($otheruser);
+
+        try {
+            listing_service::mark_sold($listingid);
+            $this->fail('Se esperaba una excepcion de permisos.');
+        } catch (\moodle_exception $exception) {
+            $this->assertSame('nopermissions', $exception->errorcode);
+        }
+
+        $this->assertSame(
+            'available',
+            $DB->get_field(
+                'local_chuspasocial_listing',
+                'status',
+                ['id' => $listingid],
+                MUST_EXIST
+            )
+        );
+    }
+}

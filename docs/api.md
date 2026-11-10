@@ -119,6 +119,84 @@ Campos de cada anuncio: `id` (id del anuncio), `userid` (id del vendedor), `titl
 * `required_capability_exception`: el usuario no tiene la capacidad `local/chuspasocial:view`.
 * `require_login`: el usuario no tiene sesión iniciada.
 
+### `local_chuspasocial_get_posts`
+
+Obtiene una página de publicaciones del muro general de ChuspaSocial o del muro de una materia. Devuelve los datos de las publicaciones, la información de sus autores, las imágenes y etiquetas asociadas, y el estado de las reacciones del usuario actual.
+
+**Descripción:**
+
+La función permite consultar las publicaciones de forma paginada. Si `courseid` es `0`, consulta el muro general; si es mayor que `0`, consulta el muro del curso indicado. Las publicaciones ocultas se excluyen de los resultados del muro general.
+
+**Parámetros:**
+
+* `courseid` (int, opcional): ID del curso cuyas publicaciones se desean consultar. El valor `0` indica el muro general. Por defecto, `0`.
+* `page` (int, opcional): Número de página que se desea obtener, comenzando desde `0`. Por defecto, `0`. No puede ser negativo.
+* `perpage` (int, opcional): Cantidad de publicaciones por página. Por defecto, `20`. Debe estar entre `1` y `50`, ambos inclusive.
+
+**Capacidades requeridas:**
+
+* `local/chuspasocial:view`: se comprueba en el contexto del sistema cuando se consulta el muro general y en el contexto del curso cuando se consulta el muro de una materia.
+
+**Respuesta de ejemplo (JSON):**
+
+```json
+{
+  "posts": [
+    {
+      "id": 15,
+      "userid": 3,
+      "content": "Bienvenidos al curso de Física.",
+      "contentformat": 1,
+      "timecreated": 1760000100,
+      "authorfullname": "Usuario de prueba",
+      "authorpictureurl": "https://moodle.example/user/pix.php/3/f1.jpg",
+      "canedit": true,
+      "candelete": true,
+      "images": [
+        {
+          "url": "https://moodle.example/pluginfile.php/1/local_chuspasocial/postimage/15/experimento.png",
+          "filename": "experimento.png"
+        }
+      ],
+      "tags": [
+        {
+          "name": "Fisica",
+          "url": "https://moodle.example/local/chuspasocial/tag.php?tag=Fisica"
+        }
+      ],
+      "reactions": 4,
+      "hasreacted": true
+    }
+  ]
+}
+```
+
+Los valores del ejemplo son ilustrativos. Las URL dependen de la instalación de Moodle y de los archivos existentes.
+
+**Campos de cada publicación:**
+
+* `id`: identificador de la publicación.
+* `userid`: identificador de su autor.
+* `content`: contenido de la publicación, procesado mediante el formato de texto de Moodle.
+* `contentformat`: formato del contenido.
+* `timecreated`: fecha de creación en formato de marca de tiempo Unix.
+* `authorfullname`: nombre completo del autor.
+* `authorpictureurl`: URL de la imagen de perfil del autor.
+* `canedit`: indica si el usuario actual puede editar la publicación.
+* `candelete`: indica si el usuario actual puede eliminarla.
+* `images`: arreglo de imágenes asociadas; cada elemento contiene `url` y `filename`.
+* `tags`: arreglo de etiquetas; cada elemento contiene `name` y `url`.
+* `reactions`: número total de reacciones de la publicación.
+* `hasreacted`: indica si el usuario actual ya reaccionó a la publicación.
+
+Si no hay publicaciones disponibles para la página solicitada, la respuesta contiene `"posts": []`.
+
+**Errores:**
+
+* `invalid_parameter_exception`: el parámetro `page` es negativo, o `perpage` es menor que `1` o mayor que `50`.
+* `required_capability_exception`: el usuario no dispone de la capacidad `local/chuspasocial:view` en el contexto correspondiente.
+* `require_login` u otros errores de contexto de Moodle: pueden producirse si la sesión o el acceso al contexto requerido no son válidos.
+
 ### `local_chuspasocial_toggle_reaction`
 
 Permite reaccionar a una publicación o quitar la reacción sin necesidad de recargar la página.

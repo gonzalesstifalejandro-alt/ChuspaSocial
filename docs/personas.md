@@ -86,3 +86,26 @@ Copia esta plantilla para agregar una nueva persona:
 - Falta de un espacio centralizado dentro de la comunidad universitaria dedicado a la compraventa de material académico.
 
 **Cómo usa ChuspaSocial:** Accede a la sección de Marketplace de libros para publicar sus textos usados (título, precio, estado y materia asociada) y contactar directamente a los compradores interesados dentro de la plataforma.
+
+## Administrador de Moodle
+
+**Nombre:** Laura Quispe
+
+**Rol:** Administradora de la plataforma Moodle de la universidad.
+
+**Contexto:** Mantiene el campus virtual y es responsable de que ChuspaSocial funcione bien y sea un espacio seguro. Recibe los reportes de contenido inapropiado que envían estudiantes y docentes, y decide cómo se configura el plugin para toda la universidad.
+
+**Objetivos:**
+
+- Revisar a tiempo las publicaciones, comentarios y anuncios del marketplace que los usuarios reportan.
+- Ocultar el contenido reportado que no cumple las normas de la comunidad desde un solo lugar.
+- Configurar el plugin según las políticas de la universidad: habilitar o deshabilitar el marketplace, la moneda de los precios, la cantidad de publicaciones por página, el largo máximo de las publicaciones y la cantidad de imágenes permitidas.
+- Definir qué roles pueden publicar, comentar, reportar y moderar mediante los permisos de Moodle.
+
+**Frustraciones:**
+
+- Enterarse tarde de contenido inapropiado porque los reportes llegan por correo o por mensajes sueltos.
+- Tener que buscar el contenido reportado en distintas páginas para poder ocultarlo.
+- No tener una forma clara de ajustar los límites del plugin sin tocar el código.
+
+**Cómo usa ChuspaSocial:** Recibe el aviso cuando alguien reporta contenido y entra a la página de moderación, donde ve los reportes abiertos y oculta el contenido que corresponde. Desde la administración del sitio ajusta la configuración del plugin (marketplace, moneda, publicaciones por página, largo máximo e imágenes por publicación) y asigna el permiso de moderar a los roles que la ayudan con esta tarea.

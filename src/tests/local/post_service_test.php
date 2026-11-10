@@ -17,6 +17,7 @@
 namespace local_chuspasocial\local;
 
 use advanced_testcase;
+use local_chuspasocial\local\persistent\post;
 
 /**
  * Pruebas unitarias para el metodo can_post_announcement.
@@ -340,5 +341,481 @@ class post_service_test extends advanced_testcase {
 
         $post = $DB->get_record('local_chuspasocial_post', ['id' => $postid]);
         $this->assertGreaterThan($oldtime, $post->timemodified);
+    }
+
+    /**
+     * Devuelve los ids (int) de los posts de un feed.
+     *
+     * @param array $feed Resultado de get_general_feed().
+     * @return int[] Ids de los posts.
+     */
+    private function get_feed_ids(array $feed): array {
+        return array_map('intval', array_column($feed, 'id'));
+    }
+
+    /**
+     * El feed incluye las publicaciones generales (courseid 0).
+     *
+     * @covers \local_chuspasocial\local\post_service::get_general_feed
+     */
+    public function test_get_general_feed_incluye_publicaciones_generales(): void {
+        $user = $this->getDataGenerator()->create_user();
+        $postid = $this->create_test_post($user->id, 0);
+
+        $this->setUser($user);
+        $feed = post_service::get_general_feed(0, 10);
+
+        $this->assertContains($postid, $this->get_feed_ids($feed));
+    }
+
+    /**
+     * El feed incluye las publicaciones de las materias donde el usuario esta inscrito.
+     *
+     * @covers \local_chuspasocial\local\post_service::get_general_feed
+     */
+    public function test_get_general_feed_incluye_publicaciones_de_materias_propias(): void {
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $user = $generator->create_user();
+        $generator->enrol_user($user->id, $course->id, 'student');
+        $postid = $this->create_test_post($user->id, $course->id);
+
+        $this->setUser($user);
+        $feed = post_service::get_general_feed(0, 10);
+
+        $this->assertContains($postid, $this->get_feed_ids($feed));
+    }
+
+    /**
+     * El feed no incluye publicaciones de materias donde el usuario no esta inscrito.
+     *
+     * @covers \local_chuspasocial\local\post_service::get_general_feed
+     */
+    public function test_get_general_feed_excluye_publicaciones_de_materias_ajenas(): void {
+        $generator = $this->getDataGenerator();
+        $owncourse = $generator->create_course();
+        $othercourse = $generator->create_course();
+        $user = $generator->create_user();
+        $author = $generator->create_user();
+        $generator->enrol_user($user->id, $owncourse->id, 'student');
+        $generator->enrol_user($author->id, $othercourse->id, 'student');
+        $ownpostid = $this->create_test_post($user->id, $owncourse->id);
+        $foreignpostid = $this->create_test_post($author->id, $othercourse->id);
+
+        $this->setUser($user);
+        $ids = $this->get_feed_ids(post_service::get_general_feed(0, 10));
+
+        $this->assertContains($ownpostid, $ids);
+        $this->assertNotContains($foreignpostid, $ids);
+    }
+
+    /**
+     * El feed ordena las mas recientes primero y respeta la paginacion.
+     *
+     * @covers \local_chuspasocial\local\post_service::get_general_feed
+     */
+    public function test_get_general_feed_ordena_y_pagina(): void {
+        $user = $this->getDataGenerator()->create_user();
+        $first = $this->create_test_post($user->id, 0);
+        $second = $this->create_test_post($user->id, 0);
+        $third = $this->create_test_post($user->id, 0);
+
+        $this->setUser($user);
+
+        $this->assertSame([$third, $second], $this->get_feed_ids(post_service::get_general_feed(0, 2)));
+        $this->assertSame([$first], $this->get_feed_ids(post_service::get_general_feed(1, 2)));
+    }
+
+    /**
+     * Registra que un usuario sigue a otro usuario o a un tag.
+     *
+     * @param int $userid Id del usuario que sigue.
+     * @param string $itemtype Tipo de elemento seguido: user o tag.
+     * @param int $itemid Id del elemento seguido.
+     */
+    private function create_test_follow(int $userid, string $itemtype, int $itemid): void {
+        global $DB;
+
+        $DB->insert_record('local_chuspasocial_follow', (object) [
+            'userid' => $userid,
+            'itemtype' => $itemtype,
+            'itemid' => $itemid,
+            'timecreated' => time(),
+        ]);
+    }
+
+    /**
+     * Asigna un tag a una publicacion del muro general.
+     *
+     * @param int $postid Id de la publicacion.
+     * @param string $tagname Nombre del tag.
+     * @return int Id del tag.
+     */
+    private function add_test_tag(int $postid, string $tagname): int {
+        \core_tag_tag::set_item_tags(
+            'local_chuspasocial',
+            'local_chuspasocial_post',
+            $postid,
+            \context_system::instance(),
+            [$tagname]
+        );
+        $tags = \core_tag_tag::get_item_tags('local_chuspasocial', 'local_chuspasocial_post', $postid);
+
+        return (int) reset($tags)->id;
+    }
+
+    /**
+     * El feed incluye las publicaciones de usuarios seguidos y no las de otros usuarios.
+     *
+     * @covers \local_chuspasocial\local\post_service::get_personal_feed
+     */
+    public function test_get_personal_feed_incluye_publicaciones_de_usuarios_seguidos(): void {
+        $generator = $this->getDataGenerator();
+        $viewer = $generator->create_user();
+        $followed = $generator->create_user();
+        $other = $generator->create_user();
+        $followedpostid = $this->create_test_post($followed->id, 0);
+        $this->create_test_post($other->id, 0);
+        $this->create_test_follow($viewer->id, 'user', $followed->id);
+
+        $this->setUser($viewer);
+        $feed = post_service::get_personal_feed(0, 10);
+
+        $this->assertSame([$followedpostid], $this->get_feed_ids($feed));
+    }
+
+    /**
+     * El feed incluye las publicaciones con tags seguidos y no las que no los tienen.
+     *
+     * @covers \local_chuspasocial\local\post_service::get_personal_feed
+     */
+    public function test_get_personal_feed_incluye_publicaciones_de_tags_seguidos(): void {
+        $generator = $this->getDataGenerator();
+        $viewer = $generator->create_user();
+        $author = $generator->create_user();
+        $taggedpostid = $this->create_test_post($author->id, 0);
+        $this->create_test_post($author->id, 0);
+        $tagid = $this->add_test_tag($taggedpostid, 'tagseguido');
+        $this->create_test_follow($viewer->id, 'tag', $tagid);
+
+        $this->setUser($viewer);
+        $feed = post_service::get_personal_feed(0, 10);
+
+        $this->assertSame([$taggedpostid], $this->get_feed_ids($feed));
+    }
+
+    /**
+     * Una publicacion de un usuario seguido con un tag seguido aparece una sola vez.
+     *
+     * @covers \local_chuspasocial\local\post_service::get_personal_feed
+     */
+    public function test_get_personal_feed_no_duplica_publicaciones(): void {
+        $generator = $this->getDataGenerator();
+        $viewer = $generator->create_user();
+        $author = $generator->create_user();
+        $postid = $this->create_test_post($author->id, 0);
+        $tagid = $this->add_test_tag($postid, 'tagseguido');
+        $this->create_test_follow($viewer->id, 'user', $author->id);
+        $this->create_test_follow($viewer->id, 'tag', $tagid);
+
+        $this->setUser($viewer);
+        $feed = post_service::get_personal_feed(0, 10);
+
+        $this->assertSame([$postid], $this->get_feed_ids($feed));
+    }
+
+    /**
+     * El feed no incluye publicaciones de materias donde el usuario no esta inscrito.
+     *
+     * @covers \local_chuspasocial\local\post_service::get_personal_feed
+     */
+    public function test_get_personal_feed_excluye_publicaciones_de_materias_ajenas(): void {
+        $generator = $this->getDataGenerator();
+        $owncourse = $generator->create_course();
+        $othercourse = $generator->create_course();
+        $viewer = $generator->create_user();
+        $author = $generator->create_user();
+        $generator->enrol_user($viewer->id, $owncourse->id, 'student');
+        $generator->enrol_user($author->id, $owncourse->id, 'student');
+        $generator->enrol_user($author->id, $othercourse->id, 'student');
+        $ownpostid = $this->create_test_post($author->id, $owncourse->id);
+        $this->create_test_post($author->id, $othercourse->id);
+        $this->create_test_follow($viewer->id, 'user', $author->id);
+
+        $this->setUser($viewer);
+        $feed = post_service::get_personal_feed(0, 10);
+
+        $this->assertSame([$ownpostid], $this->get_feed_ids($feed));
+    }
+
+    /**
+     * An enrolled student can view a visible course post.
+     *
+     * @covers \local_chuspasocial\local\post_service::can_view
+     */
+    public function test_can_view_enrolled_student(): void {
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $author = $generator->create_user();
+        $viewer = $generator->create_user();
+        $generator->enrol_user($viewer->id, $course->id, 'student');
+        $post = new post($this->create_test_post($author->id, $course->id));
+
+        $this->setUser($viewer);
+
+        $this->assertTrue(post_service::can_view($post, $viewer->id));
+    }
+
+    /**
+     * A user without enrolment or course access cannot view a course post.
+     *
+     * @covers \local_chuspasocial\local\post_service::can_view
+     */
+    public function test_can_view_non_enrolled_user_is_denied(): void {
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $author = $generator->create_user();
+        $viewer = $generator->create_user();
+        $post = new post($this->create_test_post($author->id, $course->id));
+
+        $this->setUser($viewer);
+
+        $this->assertFalse(post_service::can_view($post, $viewer->id));
+    }
+
+    /**
+     * Explicit course access permits viewing without enrolment.
+     *
+     * @covers \local_chuspasocial\local\post_service::can_view
+     */
+    public function test_can_view_course_access_without_enrolment(): void {
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $author = $generator->create_user();
+        $viewer = $generator->create_user();
+        $context = \context_course::instance($course->id);
+        $roleid = $generator->create_role();
+        assign_capability('moodle/course:view', CAP_ALLOW, $roleid, $context->id);
+        role_assign($roleid, $viewer->id, $context->id);
+        $post = new post($this->create_test_post($author->id, $course->id));
+
+        $this->setUser($viewer);
+
+        $this->assertTrue(post_service::can_view($post, $viewer->id));
+    }
+
+    /**
+     * A registered user can view a general post with the view capability.
+     *
+     * @covers \local_chuspasocial\local\post_service::can_view
+     */
+    public function test_can_view_general_post(): void {
+        $generator = $this->getDataGenerator();
+        $author = $generator->create_user();
+        $viewer = $generator->create_user();
+        $post = new post($this->create_test_post($author->id, 0));
+
+        $this->setUser($viewer);
+
+        $this->assertTrue(post_service::can_view($post, $viewer->id));
+    }
+
+    /**
+     * A prohibited view capability prevents access to a general post.
+     *
+     * @covers \local_chuspasocial\local\post_service::can_view
+     */
+    public function test_can_view_general_post_without_capability_is_denied(): void {
+        $generator = $this->getDataGenerator();
+        $author = $generator->create_user();
+        $viewer = $generator->create_user();
+        $context = \context_system::instance();
+        $roleid = $generator->create_role();
+        assign_capability('local/chuspasocial:view', CAP_PROHIBIT, $roleid, $context->id);
+        role_assign($roleid, $viewer->id, $context->id);
+        $post = new post($this->create_test_post($author->id, 0));
+
+        $this->setUser($viewer);
+
+        $this->assertFalse(post_service::can_view($post, $viewer->id));
+    }
+
+    /**
+     * Enrolment alone does not permit viewing a hidden post.
+     *
+     * @covers \local_chuspasocial\local\post_service::can_view
+     */
+    public function test_can_view_hidden_post_is_denied_to_other_student(): void {
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $author = $generator->create_user();
+        $viewer = $generator->create_user();
+        $generator->enrol_user($viewer->id, $course->id, 'student');
+        $post = new post($this->create_test_post($author->id, $course->id));
+        $post->set('hidden', true);
+
+        $this->setUser($viewer);
+
+        $this->assertFalse(post_service::can_view($post, $viewer->id));
+    }
+
+    /**
+     * The enrolled author can view their own hidden post.
+     *
+     * @covers \local_chuspasocial\local\post_service::can_view
+     */
+    public function test_can_view_hidden_post_by_author(): void {
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $author = $generator->create_user();
+        $generator->enrol_user($author->id, $course->id, 'student');
+        $post = new post($this->create_test_post($author->id, $course->id));
+        $post->set('hidden', true);
+
+        $this->setUser($author);
+
+        $this->assertTrue(post_service::can_view($post, $author->id));
+    }
+
+    /**
+     * An enrolled moderator can view another user's hidden post.
+     *
+     * @covers \local_chuspasocial\local\post_service::can_view
+     */
+    public function test_can_view_hidden_post_by_moderator(): void {
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $author = $generator->create_user();
+        $moderator = $this->create_moderator();
+        $generator->enrol_user($moderator->id, $course->id, 'student');
+        $post = new post($this->create_test_post($author->id, $course->id));
+        $post->set('hidden', true);
+
+        $this->setUser($moderator);
+
+        $this->assertTrue(post_service::can_view($post, $moderator->id));
+    }
+
+    /**
+     * A post referencing a deleted course cannot be viewed.
+     *
+     * @covers \local_chuspasocial\local\post_service::can_view
+     */
+    public function test_can_view_deleted_course_is_denied(): void {
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $author = $generator->create_user();
+        $viewer = $generator->create_user();
+        $post = new post($this->create_test_post($author->id, $course->id));
+        delete_course($course, false);
+
+        $this->setUser($viewer);
+
+        $this->assertFalse(post_service::can_view($post, $viewer->id));
+    }
+        /**
+     * Crea un post con fecha de creacion y visibilidad controladas.
+     *
+     * @param int $userid Autor de la publicacion.
+     * @param int $courseid Materia donde se publica (0 = muro general).
+     * @param int $timecreated Fecha de creacion de la publicacion.
+     * @param int $hidden 1 si la publicacion esta oculta, 0 si es visible.
+     * @return int Id de la publicacion creada.
+     */
+    private function create_test_post_at(int $userid, int $courseid, int $timecreated, int $hidden = 0): int {
+        global $DB;
+
+        return (int) $DB->insert_record('local_chuspasocial_post', (object) [
+            'userid' => $userid,
+            'courseid' => $courseid,
+            'type' => 'post',
+            'content' => 'Test post',
+            'contentformat' => FORMAT_HTML,
+            'hidden' => $hidden,
+            'timecreated' => $timecreated,
+            'timemodified' => $timecreated,
+        ]);
+    }
+
+    /**
+     * El feed de una materia ordena las publicaciones de la mas reciente a la mas antigua.
+     *
+     * @covers \local_chuspasocial\local\post_service::get_course_feed
+     */
+    public function test_get_course_feed_ordena_de_mas_reciente_a_mas_antigua(): void {
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $user = $generator->create_user();
+
+        // Se crean desordenados a proposito.
+        $oldest = $this->create_test_post_at($user->id, $course->id, 1000);
+        $newest = $this->create_test_post_at($user->id, $course->id, 3000);
+        $middle = $this->create_test_post_at($user->id, $course->id, 2000);
+
+        $feed = post_service::get_course_feed($course->id, 0, 10);
+
+        $this->assertSame([$newest, $middle, $oldest], $this->get_feed_ids($feed));
+    }
+
+    /**
+     * El feed de una materia respeta el numero de pagina y el tamano de pagina.
+     *
+     * @covers \local_chuspasocial\local\post_service::get_course_feed
+     */
+    public function test_get_course_feed_respeta_la_paginacion(): void {
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $user = $generator->create_user();
+
+        $ids = [];
+        foreach ([1000, 2000, 3000, 4000, 5000] as $time) {
+            $ids[] = $this->create_test_post_at($user->id, $course->id, $time);
+        }
+
+        $this->assertSame([$ids[4], $ids[3]], $this->get_feed_ids(post_service::get_course_feed($course->id, 0, 2)));
+        $this->assertSame([$ids[2], $ids[1]], $this->get_feed_ids(post_service::get_course_feed($course->id, 1, 2)));
+        $this->assertSame([$ids[0]], $this->get_feed_ids(post_service::get_course_feed($course->id, 2, 2)));
+        $this->assertSame([], $this->get_feed_ids(post_service::get_course_feed($course->id, 3, 2)));
+    }
+
+    /**
+     * El feed de una materia no incluye publicaciones de otras materias ni del muro general.
+     *
+     * @covers \local_chuspasocial\local\post_service::get_course_feed
+     */
+    public function test_get_course_feed_excluye_publicaciones_de_otras_materias(): void {
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $othercourse = $generator->create_course();
+        $user = $generator->create_user();
+
+        $ownpostid = $this->create_test_post_at($user->id, $course->id, 1000);
+        $foreignpostid = $this->create_test_post_at($user->id, $othercourse->id, 2000);
+        $generalpostid = $this->create_test_post_at($user->id, 0, 3000);
+
+        $ids = $this->get_feed_ids(post_service::get_course_feed($course->id, 0, 10));
+
+        $this->assertSame([$ownpostid], $ids);
+        $this->assertNotContains($foreignpostid, $ids);
+        $this->assertNotContains($generalpostid, $ids);
+    }
+
+    /**
+     * El feed de una materia no incluye las publicaciones ocultas.
+     *
+     * @covers \local_chuspasocial\local\post_service::get_course_feed
+     */
+    public function test_get_course_feed_excluye_publicaciones_ocultas(): void {
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $user = $generator->create_user();
+
+        $visibleid = $this->create_test_post_at($user->id, $course->id, 1000, 0);
+        $hiddenid = $this->create_test_post_at($user->id, $course->id, 2000, 1);
+
+        $ids = $this->get_feed_ids(post_service::get_course_feed($course->id, 0, 10));
+
+        $this->assertSame([$visibleid], $ids);
+        $this->assertNotContains($hiddenid, $ids);
     }
 }
