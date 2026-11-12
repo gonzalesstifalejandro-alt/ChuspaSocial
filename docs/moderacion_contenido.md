@@ -14,7 +14,15 @@ ChuspaSocial permite que los usuarios reporten contenido inapropiado y que los m
 | Comentario            | `comment`          |
 | Libro del marketplace | `listing`          |
 
-Cada reporte incluye un **motivo** (`reason`) en texto libre escrito por quien reporta. No hay categorías de motivo predefinidas.
+Cada reporte incluye un **motivo** (`reason`) en texto libre escrito por quien reporta. Actualmente **no hay categorías de motivo predefinidas**: el sistema solo valida que el motivo no esté vacío.
+
+Ejemplos de motivos que un usuario puede escribir:
+
+- Contenido ofensivo: "Insulta a un compañero en el comentario."
+- Spam: "Publicidad repetida que no tiene relación con el curso."
+- Contenido inapropiado: "El libro publicado no corresponde a la plataforma."
+
+Estos son solo ejemplos de texto libre; el sistema no los clasifica.
 
 ---
 
@@ -52,7 +60,7 @@ Permiso requerido: `local/chuspasocial:moderate`, en contexto de sistema. Por de
 | ----------------------- | ------------------------------------ | ------ |
 | Resolver y ocultar post | `report_service::resolve_and_hide()` | El reporte pasa a `resolved` y el post queda con `hidden = 1`. |
 
-Actualmente no existe una acción para descartar un reporte sin ocultar el contenido.
+> **Pendiente de implementación:** el descarte de reportes (cerrar un reporte sin ocultar el contenido) aún no existe. Actualmente la única acción disponible para el moderador es `report_service::resolve_and_hide()`, que resuelve el reporte y oculta la publicación.
 
 ---
 
@@ -68,6 +76,10 @@ Para el resto de usuarios el post deja de ser visible (`post_service::can_view()
 Las reglas generales de visibilidad siguen aplicando antes de esta comprobación: el muro general exige `local/chuspasocial:view`, y las publicaciones de un curso solo las ven los inscritos o quienes tienen acceso al curso.
 
 Actualmente la acción de ocultar se aplica a publicaciones (`local_chuspasocial_post`). Para reportes de comentarios o libros, `resolve_and_hide()` no tiene un efecto equivalente documentado.
+
+### Los posts ocultos no aparecen en los listados
+
+`can_view()` solo decide si un usuario puede acceder a un post concreto. Un post oculto (`hidden = 1`) **no aparece en los listados** del muro ni de los cursos, tampoco para su autor o para un moderador: los listados filtran los posts ocultos (`hidden = 0`). Por eso, aunque el autor o el moderador tenga permiso de acceso, solo puede llegar a un post oculto de forma directa, no navegando por el muro.
 
 ---
 
